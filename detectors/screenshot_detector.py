@@ -1,6 +1,7 @@
 import os
-import time
 import threading
+import time
+from datetime import datetime
 from pathlib import Path
 
 import keyboard
@@ -19,17 +20,11 @@ class ScreenshotDetector:
 
         "SnippingTool.exe",
         "ScreenClippingHost.exe",
-
         "ShareX.exe",
-
         "Lightshot.exe",
-
         "Greenshot.exe",
-
         "ScreenRec.exe",
-
         "OBS.exe",
-
         "OBS64.exe"
 
     }
@@ -38,16 +33,19 @@ class ScreenshotDetector:
 
         self.folder = Path.home() / "Pictures" / "Screenshots"
 
+        self.start_time = datetime.now().timestamp()
+
         if self.folder.exists():
-
             self.archivos = set(os.listdir(self.folder))
-
         else:
-
             self.archivos = set()
 
         self.clipboard_detectado = False
 
+        # Evita reportar el mismo proceso muchas veces
+        self.procesos_detectados = set()
+
+    #####################################################
 
     def start(self):
 
@@ -74,42 +72,30 @@ class ScreenshotDetector:
         ).start()
 
         while True:
-
             time.sleep(1)
+
+    #####################################################
 
     def monitor_keyboard(self):
 
         keyboard.add_hotkey(
-
             "print screen",
-
-            lambda: self.reportar(
-                "Print Screen"
-            )
-
+            lambda: self.reportar("Print Screen")
         )
 
         keyboard.add_hotkey(
-
             "alt+print screen",
-
-            lambda: self.reportar(
-                "Alt + Print Screen"
-            )
-
+            lambda: self.reportar("Alt + Print Screen")
         )
 
         keyboard.add_hotkey(
-
             "windows+shift+s",
-
-            lambda: self.reportar(
-                "Windows + Shift + S"
-            )
-
+            lambda: self.reportar("Windows + Shift + S")
         )
 
         keyboard.wait()
+
+    #####################################################
 
     def monitor_processes(self):
 
@@ -117,22 +103,34 @@ class ScreenshotDetector:
 
             try:
 
-                for proceso in psutil.process_iter(["name"]):
+                procesos_actuales = set()
 
+                for proceso in psutil.process_iter(["pid", "name"]):
+
+                    pid = proceso.info["pid"]
                     nombre = proceso.info["name"]
 
-                    if nombre in self.PROGRAMAS_CAPTURA:
+                    procesos_actuales.add(pid)
 
-                        self.reportar(
-                            f"Proceso: {nombre}"
-                        )
+                    if nombre not in self.PROGRAMAS_CAPTURA:
+                        continue
+
+                    if pid in self.procesos_detectados:
+                        continue
+
+                    self.procesos_detectados.add(pid)
+
+                    self.reportar(f"Proceso: {nombre}")
+
+                # Eliminar procesos cerrados
+                self.procesos_detectados &= procesos_actuales
 
             except Exception:
-
                 pass
 
             time.sleep(2)
 
+    #####################################################
 
     def monitor_folder(self):
 
@@ -141,33 +139,38 @@ class ScreenshotDetector:
             try:
 
                 if not self.folder.exists():
-
-                    time.sleep(2)
-
+                    time.sleep(1)
                     continue
 
-                actuales = set(
-                    os.listdir(self.folder)
-                )
+                actuales = set(os.listdir(self.folder))
 
                 nuevos = actuales - self.archivos
 
                 for archivo in nuevos:
 
+                    ruta = self.folder / archivo
+
+                    if not ruta.exists():
+                        continue
+
+                    creado = ruta.stat().st_ctime
+
+                    # Ignorar capturas anteriores al inicio del agente
+                    if creado < self.start_time:
+                        continue
+
                     self.reportar(
-
-                        f"Archivo creado: {archivo}"
-
+                        f"Captura guardada: {archivo}"
                     )
 
                 self.archivos = actuales
 
-            except Exception:
-
-                pass
+            except Exception as e:
+                print(e)
 
             time.sleep(1)
 
+    #####################################################
 
     def monitor_clipboard(self):
 
@@ -192,22 +195,17 @@ class ScreenshotDetector:
                     self.clipboard_detectado = False
 
             except Exception:
-
                 pass
 
             time.sleep(1)
 
+    #####################################################
 
     def reportar(self, origen):
 
         if not DebounceService.permitir(
-
                 "SCREENSHOT",
-
-                segundos=5
-
-        ):
-
+                segundos=5):
             return
 
         usuario = SessionContext.user
@@ -225,19 +223,19 @@ class ScreenshotDetector:
             recomendacion="Validar si la captura contiene información sensible.",
 
             pasos="""
-                1. Identificar el motivo de la captura.
-                2. Revisar si contiene información confidencial.
-                3. Verificar que esté autorizada.
-                4. Registrar el incidente.
-                """,
+1. Identificar el motivo de la captura.
+2. Revisar si contiene información confidencial.
+3. Verificar que esté autorizada.
+4. Registrar el incidente.
+""",
 
             acciones=f"""
-                Usuario : {usuario['usuario']}
+Usuario : {usuario['usuario']}
 
-                Origen : {origen}
+Origen : {origen}
 
-                Ventana : {ventana}
-                """
+Ventana : {ventana}
+"""
 
         )
 
