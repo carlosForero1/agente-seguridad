@@ -3,11 +3,11 @@ import time
 
 from servicios.auth_client import AuthClient
 from servicios.session_context import SessionContext
-
+from detectors.process_detector import ProcessDetector
 from detectors.usb_detector import USBDetector
 from detectors.download_detector import DownloadDetector
 from detectors.screenshot_detector import ScreenshotDetector
-
+from servicios.permission_sync_service import PermissionSyncService 
 
 def login():
 
@@ -53,6 +53,7 @@ def main():
     downloads = DownloadDetector()
 
     screenshots = ScreenshotDetector()
+    process = ProcessDetector()
 
     # Detector USB
     threading.Thread(
@@ -71,6 +72,17 @@ def main():
         target=screenshots.start,
         daemon=True
     ).start()
+
+# Detector procesos
+    threading.Thread(
+    target=process.start,
+    daemon=True
+).start()
+    
+    threading.Thread(
+    target=PermissionSyncService.start,
+    daemon=True
+).start()
 
     while True:
         time.sleep(1)
